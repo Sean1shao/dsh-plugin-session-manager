@@ -1,0 +1,12 @@
+# dsh-plugin-session-manager 的组合行。
+#
+# 一行同时承载两面：
+#   - Node 面 lib/index.js —— 在 /api 上注册删除路由（ctx.connection.fetch）；
+#   - 浏览器面 lib/client.js —— 由 dsh-client-modules 按 package.json 的
+#     dsh.client 声明扫描并注入到会话行菜单。
+#
+# 行 id 与包名不同名是可以的；但 name 必须正好是包名，浏览器半侧才会被挂到
+# 这一行上（client-modules 只认说明符恰为包名的行）。
+- insert:
+    - id: session-manager
+      name: 'dsh-plugin-session-manager'

@@ -1,0 +1,10 @@
+# Normalize everything to LF in the repository; only the Windows installer is
+# checked out as CRLF for maximum editor compatibility.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+
+# Extensionless files that still deserve LF.
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+LICENSE        text eol=lf

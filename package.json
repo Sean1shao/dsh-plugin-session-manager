@@ -1,0 +1,55 @@
+{
+  "name": "dsh-plugin-session-manager",
+  "version": "0.1.0",
+  "description": "A Delete session action for the DeepSeek Harness sidebar: removes a session's log and projection cache, leaving workspace folders and other sessions untouched.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh-CN.md",
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "session",
+    "delete",
+    "sidebar"
+  ],
+  "license": "MIT",
+  "author": "syb",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sean1shao/dsh-plugin-session-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Sean1shao/dsh-plugin-session-manager/issues"
+  },
+  "homepage": "https://github.com/Sean1shao/dsh-plugin-session-manager#readme",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  }
+}

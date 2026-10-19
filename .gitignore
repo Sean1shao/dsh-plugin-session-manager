@@ -1,0 +1,17 @@
+# Dependencies (none at runtime, but tooling may add some later)
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Scratch
+coverage/
+*.local
