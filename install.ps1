@@ -94,8 +94,14 @@ function Get-PatchText {
 }
 
 function Remove-MarkedBlock([string]$Text) {
-    $pattern = [regex]::Escape($BeginMarker) + '(?s).*?' + [regex]::Escape($EndMarker) + '\r?\n?'
-    [regex]::Replace($Text, $pattern, '')
+    # A profile editor can insert other patch rows before the closing marker.
+    # Remove the installer-owned row and markers while keeping those rows.
+    $start = [regex]::Escape($BeginMarker)
+    $end = [regex]::Escape($EndMarker)
+    $name = [regex]::Escape($PackageName)
+    $row = "(?m)^${start}[^\r\n]*\r?\n- insert:[ \t]*\r?\n[ \t]+- id: session-manager[ \t]*\r?\n[ \t]+name: '$name'[ \t]*\r?\n?"
+    $textWithoutRow = [regex]::Replace($Text, $row, '')
+    [regex]::Replace($textWithoutRow, "(?m)^${end}[ \t]*\r?\n?", '')
 }
 
 function Set-PatchText([string]$Text) {
@@ -149,6 +155,10 @@ Copy-Item -LiteralPath $SourcePath -Destination $TargetPath -Recurse -Force
 Write-Note "已复制到 $TargetPath"
 
 $text = Remove-MarkedBlock (Get-PatchText)
+# Fresh DSH profiles represent an empty patch list with a standalone [].
+if ($text -match '(?m)^\s*\[\s*\]\s*(?:#.*)?$') {
+    $text = $text -replace '(?m)^[ \t]*\[\s*\][ \t]*(?:#.*)?\r?\n?', ''
+}
 $beginNote = '(managed by install.ps1; delete this block to uninstall)'
 $block = @"
 $BeginMarker $beginNote

@@ -23,7 +23,7 @@ DSH 只提供「归档（隐藏）」——数据一个字节都不少——而�
 
 **状态：** 0.1.0，还年轻。Host 路由、删除逻辑、浏览器 bundle 的加载都有测试覆盖，也在真实 profile 上验证过解析与注册；菜单项本身靠手工验证。DSH 的插件接口仍在演进，请以你实测过的 DSH 版本为准。
 
-- DSH 桌面版或 `dsh --profile web`。开发环境：**DSH Desktop 44.7.0**（`@deepseek-ai/dsh-*` 0.2.1-rc.2）。
+- DSH 桌面版或 `dsh --profile web`。开发基准为 **DSH 0.2.2-rc.1**。
 - Windows 下安装脚本需要 PowerShell 5.1+；macOS / Linux 用手工安装。
 - 运行时零依赖：Node 面只 import `node:fs`、`node:os`、`node:path`。
 
@@ -75,7 +75,7 @@ YAML
 把指针停在某个会话行上 → `⋯` → **删除会话** → 确认。
 
 - 会话**仍在跑工作**（回合进行中、子智能体、后台任务、定时提醒）时 Host 会拒绝，并告诉你还有几项活动 —— 先停止或等它结束。
-- 成功后页面自动刷新一次。侧栏的成员关系来自 Host 的投影流，删文件不会推事件，刷新是拿到干净列表最诚实的做法。
+- 删除成功后，侧栏会移除该会话。如果正在查看的是被删会话，主聊天区会退出该会话。
 - 日志文件被占用（例如该会话正开着且在写）时返回 `409 locked`，关掉该会话再试。
 
 ## 删了什么
@@ -87,7 +87,7 @@ YAML
 
 会话根目录默认是 `$DSH_HOME/sessions`（通常是 `~/.dsh/sessions`）。
 
-**不会**删除：工作区目录及其中文件、工作区登记（`workspace.json`）、其他会话、附件对象（`attachments/v1/objects`，按内容寻址，可能被别的会话引用）。
+Host 通过 DSH 工作区注册表更新被删会话的成员关系。
 
 ## 安全模型
 
@@ -95,7 +95,7 @@ YAML
 
 1. `sessionId` 必须匹配 `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` —— 杜绝路径穿越；
 2. 先问 `workspace/session-activity` 瀑布：有任何活动 → `409 session-active`，**一个字节都不动**；连问都问不出来 → `500`，同样不动；
-3. 确认空闲后，才按目录名全等定位日志目录并删除；
+3. 确认空闲后，Host 按目录名全等定位日志目录，归档会话后删除日志；
 4. 投影缓存记录尽力清理，失败只记日志，不影响删除结果。
 
 整条路由挂在 Connection 的 `/api` 上，因此自动继承浏览器认证、Host/Origin 栅栏和 fiber 生命周期（插件卸载即摘除路由）。
@@ -117,7 +117,7 @@ YAML
 
 | 面 | 文件 | 职责 |
 |---|---|---|
-| Host | [`lib/index.js`](lib/index.js) | 在 Connection 的精确 Fetch 路由表上注册 `POST /api/dsh-session-manager/delete` |
+| Host | [`lib/index.js`](lib/index.js) | 在 Connection 的精确 Fetch 路由表上注册删除及删除记录接口 |
 | 浏览器 | [`lib/client.js`](lib/client.js) | `__ModuleLoader__` 惰性 CJS bundle，向 `sidebar.workspaces.session.menu.item` 槽贡献菜单项 |
 
 为什么不用 Typert Remote？单个动作不值得引入生成式描述符与编解码器；DSH 自己就用同一条精确 Fetch 通道做会话日志下载与原始文件上传。细节见 [ARCHITECTURE.md](ARCHITECTURE.md)。
@@ -125,8 +125,6 @@ YAML
 ## 已知限制
 
 - **删除不可恢复**，没有回收站。要留后路就先备份 `%USERPROFILE%\.dsh\sessions`。
-- **`workspace.json` 会留下悬空的 session id**：DSH 读取时会把它们过滤掉、下次工作区变更时剪除，侧栏不会出现幽灵行；但文件里那条记录会留到下次变更。
-- **删完要刷新页面**：投影流不会因为文件消失而推事件，插件成功后直接 `location.reload()`。
 - **附件孤儿对象不回收**（保守优先，与官方「归档不删数据」的取向一致）。
 - **subagent 会话不在侧栏显示**，因此没有对应菜单项。
 - 会话 id 的目录名按原样匹配（`session-<uuid>` 编码后是恒等变换）。将来若 id 形态变化、需要转义，`findSessionDirectory` 会返回 `404` 而不是误删。

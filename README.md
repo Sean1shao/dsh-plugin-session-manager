@@ -27,7 +27,7 @@ pin the DSH version you tested against.
 ## Requirements
 
 - DSH Desktop or `dsh --profile web`.
-  Built against **DSH Desktop 44.7.0** (`@deepseek-ai/dsh-*` 0.2.1-rc.2).
+  Built against **DSH 0.2.2-rc.1**.
 - Windows PowerShell 5.1+ for the installer. Manual installation works on macOS and Linux too.
 - No runtime dependencies: the host half imports only `node:fs`, `node:os` and `node:path`.
 
@@ -79,7 +79,7 @@ Restart DSH. The profile directory defaults to `%USERPROFILE%\.dsh\profiles\desk
 Hover a session row → `⋯` → **Delete session** → confirm.
 
 - If the session still has work running (a turn, live subagents, background jobs, reminders), the host refuses and reports how many activities are pending. Stop them first.
-- On success the page reloads once. The sidebar's membership comes from a host projection stream, and deleting files emits no event, so a reload is the honest way to get a clean list.
+- On success the session disappears from the sidebar. If it was open, DSH clears the chat view without reloading the page.
 - If the log file is in use (for example the session is open and still writing), you get `409 locked`; close the session and retry.
 
 ## What gets deleted
@@ -91,7 +91,7 @@ Hover a session row → `⋯` → **Delete session** → confirm.
 
 The sessions root is `$DSH_HOME/sessions` by default (usually `~/.dsh/sessions`).
 
-**Not** deleted: the workspace directory and its files, the workspace registry (`workspace.json`), other sessions, and attachment objects (`attachments/v1/objects`, content-addressed and possibly shared).
+The Host updates the deleted session's workspace membership through the DSH registry.
 
 ## Safety model
 
@@ -99,7 +99,7 @@ Deletion is irreversible, so the host half never trusts the client:
 
 1. `sessionId` must match `[A-Za-z0-9][A-Za-z0-9._-]{0,127}` — no path traversal.
 2. `workspace/session-activity` is asked first. Any reported activity → `409 session-active`, **nothing is written**. If the check itself fails → `500`, also nothing.
-3. Only then is the log directory located by exact name match and removed.
+3. The Host locates the log directory by exact name and archives the session before removing it.
 4. The projection cache record is purged best-effort and never blocks the result.
 
 All of this sits behind Connection's `/api` route, so it inherits browser authentication, the Host/Origin fence, and fiber-scoped lifecycle (unloading the plugin removes the route).
@@ -121,7 +121,7 @@ One Loader row carries two faces:
 
 | Face | File | Role |
 |---|---|---|
-| Host | [`lib/index.js`](lib/index.js) | registers `POST /api/dsh-session-manager/delete` on the Connection exact-Fetch registry |
+| Host | [`lib/index.js`](lib/index.js) | registers the delete and deletion-history routes on the Connection exact-Fetch registry |
 | Browser | [`lib/client.js`](lib/client.js) | a `__ModuleLoader__` lazy-CJS bundle that contributes to the `sidebar.workspaces.session.menu.item` slot |
 
 Why not Typert Remote? A single action does not justify generated descriptors and codecs; DSH already uses the exact-Fetch channel for session-log downloads and raw uploads. Details in [ARCHITECTURE.md](ARCHITECTURE.md).

@@ -5,7 +5,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, rename, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,7 +19,7 @@ function fakeContext({ activity = [], persistence } = {}) {
   const ctx = {
     routes,
     logger: { info() {}, warn() {} },
-    get: (key) => (key === 'sessionPersistence' ? persistence : undefined),
+    get: (key) => (key === 'sessionPersistence' ? persistence : ctx[key]),
     effect: (fn) => fn(),
     waterfall: async () => activity,
     connection: { fetch: { register: (route) => { routes.push(route); return () => {} } } },
@@ -46,15 +46,105 @@ function deletionRequest(body) {
   })
 }
 
-test('apply 注册的是一条 POST 精确路由，路径在 /api 下', () => {
+test('apply 注册 buffered POST 删除路由和 buffered GET 删除记录路由', () => {
   const ctx = fakeContext()
   apply(ctx, { sessionsRoot: join(tmpdir(), 'unused') })
-  assert.equal(ctx.routes.length, 1)
+  assert.equal(ctx.routes.length, 2)
   const route = ctx.routes[0]
   assert.equal(route.path, '/api/dsh-session-manager/delete')
   assert.deepEqual(route.methods, ['POST'])
   assert.equal(route.requestBody, 'buffered')
   assert.equal(typeof route.fetch, 'function')
+  const history = ctx.routes[1]
+  assert.equal(history.path, '/api/dsh-session-manager/deleted')
+  assert.deepEqual(history.methods, ['GET'])
+  assert.equal(history.requestBody, 'buffered')
+})
+
+test('删除同步 Host 归档、工作区成员与列表，重复请求返回同一删除结果', async (t) => {
+  const { root, session } = await fakeSessionsRoot()
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const ctx = fakeContext()
+  const archived = []
+  const members = new Set(['session-abc', 'session-other'])
+  const visible = new Set(members)
+  ctx.workspaceRegistry = {
+    archivedSessionIds: archived,
+    pinnedSessionIds: [],
+    archiveSession: async (id) => {
+      assert.equal(existsSync(session), true)
+      archived.push(id)
+    },
+    list: () => [{
+      get sessionIds() { return [...members] },
+      detachSession: async (id) => { members.delete(id) },
+    }],
+  }
+  ctx.emit = (event, id) => {
+    if (event === 'api-session/removed') {
+      assert.equal(existsSync(session), false)
+      visible.delete(id)
+    }
+  }
+  apply(ctx, { sessionsRoot: root })
+  const remove = () => ctx.routes[0].fetch(deletionRequest({ sessionId: 'session-abc' }))
+  const responses = await Promise.all([remove(), remove()])
+  assert.deepEqual(responses.map(response => response.status), [200, 200])
+  assert.deepEqual(archived, ['session-abc'])
+  assert.deepEqual([...members], ['session-other'])
+  assert.deepEqual([...visible], ['session-other'])
+  assert.deepEqual(await ctx.routes[1].fetch().json(), { sessionIds: ['session-abc'] })
+})
+
+test('归档时发现会话转为活跃，保留日志且不记录删除', async (t) => {
+  const { root, session } = await fakeSessionsRoot()
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const ctx = fakeContext()
+  ctx.workspaceRegistry = {
+    archivedSessionIds: [],
+    pinnedSessionIds: [],
+    archiveSession: async () => {
+      throw Object.assign(new Error('active'), {
+        name: 'WorkspaceActiveSessionError',
+        activity: [{ kind: 'turn' }],
+      })
+    },
+  }
+  apply(ctx, { sessionsRoot: root })
+  const response = await ctx.routes[0].fetch(deletionRequest({ sessionId: 'session-abc' }))
+  assert.equal(response.status, 409)
+  assert.equal((await response.json()).code, 'session-active')
+  assert.equal(existsSync(session), true)
+  assert.deepEqual(await ctx.routes[1].fetch().json(), { sessionIds: [] })
+})
+
+test('磁盘删除失败后恢复此前的归档和置顶状态', async (t) => {
+  const { root, session } = await fakeSessionsRoot()
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const ctx = fakeContext()
+  const id = 'session-abc'
+  const moved = join(root, 'moved-log')
+  const archived = new Set()
+  const pinned = new Set([id])
+  ctx.workspaceRegistry = {
+    get archivedSessionIds() { return [...archived] },
+    get pinnedSessionIds() { return [...pinned] },
+    archiveSession: async () => {
+      await rename(session, moved)
+      archived.add(id)
+      pinned.delete(id)
+    },
+    unarchiveSession: async (sessionId) => { archived.delete(sessionId) },
+    pinSession: async (sessionId) => { pinned.add(sessionId) },
+  }
+  apply(ctx, { sessionsRoot: root })
+  const response = await ctx.routes[0].fetch(deletionRequest({ sessionId: id }))
+  assert.equal(response.status, 500)
+  assert.equal((await response.json()).code, 'delete-failed')
+  assert.deepEqual([...archived], [])
+  assert.deepEqual([...pinned], [id])
+  assert.equal(existsSync(moved), true)
+  assert.deepEqual(await ctx.routes[1].fetch().json(), { sessionIds: [] })
 })
 
 test('删除成功：日志目录消失，返回 deleted 路径', async (t) => {

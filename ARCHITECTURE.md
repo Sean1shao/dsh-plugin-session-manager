@@ -68,18 +68,22 @@ handleDelete(request):
                           throws     → 500 activity-check-failed (no writes)
   locate                → <root>/<project>/<id>, exact directory-name match
                           missing    → 404 not-found
+  archive               → block new work and let DSH clear the selected chat
   rm -rf <session dir>  → EBUSY/EPERM/EACCES → 409 locked, otherwise 500 delete-failed
+  publish               → remember the id, detach Workspace membership, emit api-session/removed
   purge                 → storages/session_projcache/sessions/<id>.json (best effort)
   → 200 { ok: true, sessionId, deleted }
 ```
 
 The activity waterfall is the same one `archiveSession` consults, so "has running work" means the same thing here as it does to DSH's own archive guard: a live turn, running subagents, background jobs, or active reminders.
 
+The Host keeps confirmed deletion IDs for the lifetime of the plugin. The client reads them at startup and after reconnect, and reapplies them when DSH replaces its list snapshot. A Host restart rebuilds the session list from the remaining logs. DSH's built-in archive observer clears the main chat when the deleted session is selected.
+
 The sessions root resolves in this order: explicit `config.sessionsRoot` → `ctx.sessionPersistence.root` → `$DSH_HOME/sessions`. A client-supplied path is never used.
 
 ## Invariants pinned by tests
 
-1. The route is exactly `POST /api/dsh-session-manager/delete`, `requestBody: 'buffered'`.
+1. The exact routes are `POST /api/dsh-session-manager/delete` and `GET /api/dsh-session-manager/deleted`. Both use `requestBody: 'buffered'`.
 2. A session with reported activity is never touched — not even a cache purge.
 3. A failed activity probe is treated as "unknown", which also means "don't delete".
 4. Malformed input (`bad JSON`, traversal-shaped id) never reaches the filesystem.
@@ -89,6 +93,4 @@ The sessions root resolves in this order: explicit `config.sessionsRoot` → `ct
 ## Deliberate non-goals
 
 * **No trash bin.** A move-to-trash variant would need a stable location outside `sessions/` that DSH's own scanners ignore; that is a design decision for the host, not a plugin.
-* **No workspace-registry surgery.** `workspace.json` keeps a dangling id until the next workspace mutation; DSH filters dangling ids on read, and rewriting the registry from a plugin risks corrupting a two-write durable format.
 * **No attachment GC.** Blobs are content-addressed and may be shared, so reference counting belongs to DSH.
-* **No live list refresh.** The sidebar is fed by a host projection stream; deleting files emits no event. The plugin reloads the page instead of inventing a private refresh channel.
