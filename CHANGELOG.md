@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Synchronize session deletion with the workspace sidebar and active chat on DSH `0.2.2-rc.1` ([#1](https://github.com/Sean1shao/dsh-plugin-session-manager/issues/1)).
+- Accept the empty patch list generated for a fresh DSH profile in the Windows installer.
+
 ## [0.1.0] - 2026-10-19
 
 ### Added
